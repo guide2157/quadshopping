@@ -1,4 +1,4 @@
-package com.kittipod;
+package com.kittipod.objects;
 
 import java.util.ArrayList;
 
@@ -22,7 +22,7 @@ public class Person implements Comparable<Person>{
     public void addItem(Product product){
         spentProducts.add(product);
         totalSpent+=product.getPrice();
-        System.out.println(product.getName()+" : $"+product.getPrice()+" is added to "+this.name+" account.");
+        System.out.println(product.getName()+" : $"+product.getPrice()+" is added to "+this.name+"'s account.");
     }
 
     public void removeItem(Product product){
