@@ -1,7 +1,10 @@
 package com.kittipod.ui;
 
-
-import com.kittipod.exceptions.*;
+import com.kittipod.database.Database;
+import com.kittipod.exceptions.InvalidBuyerException;
+import com.kittipod.exceptions.InvalidDayException;
+import com.kittipod.exceptions.InvalidMonthException;
+import com.kittipod.exceptions.InvalidYearException;
 import com.kittipod.models.BuyingDate;
 import com.kittipod.models.Person;
 import com.kittipod.models.Product;
@@ -9,14 +12,16 @@ import com.kittipod.models.Transaction;
 
 import java.util.*;
 
-public class Menu {
+public class MenuUsingDatabase {
     private static Scanner scanner = new Scanner(System.in);
-
-    private static Set<Transaction> transactions = new HashSet<>();
-    private static Map<String, Person> people = new HashMap<>();
+//
+//    private static Set<Transaction> transactions = new HashSet<>();
+    private static Map<String,Person> people;
 
     public static void main(String[] args) {
         System.out.println("Welcome to the quad spending calculator!");
+        Database.open();
+        people = Database.getAllMembers();
         Program();
     }
 
@@ -24,7 +29,8 @@ public class Menu {
     private static void displayInstruction() {
         String[] instruction = {"Add transaction", "Remove transaction",
                 "Calculate total spending", "Assign price to each member",
-                "Display spending history", "Print member list", "Add member","Quit"};
+                "Display spending history", "Display individual spending",
+                "Print member list", "Add member","Reset transaction","Reset program","Quit"};
         for (int i = 1; i <= instruction.length; i++) {
             System.out.println(i + " : " + instruction[i - 1]);
 
@@ -74,14 +80,30 @@ public class Menu {
                     displayHistory();
                     break;
                 case 6:
-                    printMemberList();
+                    displayIndividualHistory();
                     break;
                 case 7:
-                    addMember();
+                    printMemberList();
                     break;
                 case 8:
+                    addMember();
+                    break;
+                case 9:
+                    Database.resetRecords();
+                    System.out.println("All transactions deleted.");
+                    System.out.println("===================================");
+                    break;
+                case 10:
+                    Database.resetRecords();
+                    Database.resetMembers();
+                    people.clear();
+                    System.out.println("Program reset!");
+                    System.out.println("===================================");
+                    break;
+                case 11:
                     continueProgram = false;
                     System.out.println("Program ended.");
+                    Database.close();
                     break;
                 default:
                     break;
@@ -95,22 +117,17 @@ public class Menu {
     private static void addMember() {
         scanner.nextLine();
         System.out.println("Please enter a new member name :");
-        String name = scanner.nextLine().toLowerCase();
-        if (people.containsKey(name)) {
-            System.out.println("This person is already a member.");
-        } else {
-            people.put(name,new Person(name));
-            System.out.println("New member has been added.");
-        }
+        String name = scanner.nextLine();
+        int id = Database.addMember(name);
+        people.put(name,new Person(name,id));
+        System.out.println("New member added.");
     }
+
 
     // EFFECT: Print out the amount which each member has to pay.
     private static void assignPayment() {
-        double totalPrice = 0;
-        for (Transaction transaction : transactions) {
-            totalPrice += transaction.getProduct().getPrice();
-        }
-        double averagePrice = totalPrice / people.size();
+        double total = Database.getTotal();
+        double averagePrice = total / people.size();
         for (Person person : people.values()) {
             double difference = averagePrice - person.getTotalSpent();
             System.out.println(person.getName() + " paid $" + person.getTotalSpent() + ".");
@@ -118,7 +135,7 @@ public class Menu {
                 String displayDifference = String.format("$%,.2f", difference);
                 System.out.println(person.getName() + " have to pay " + displayDifference + " more.");
             } else {
-                String displayDifference = String.format("$%,.2f", difference);
+                String displayDifference = String.format("$%,.2f", Math.abs(difference));
                 System.out.println(person.getName() + " have to get " + displayDifference + " back.");
             }
             System.out.println("===================================");
@@ -128,8 +145,12 @@ public class Menu {
 
     // EFFECT: Print out all transactions
     private static void displayHistory() {
-        List<Transaction> transactionsList = new ArrayList<>(transactions);
-        Collections.sort(transactionsList);
+        List<Transaction> transactionsList = Database.queryAllTransaction();
+        if (transactionsList == null || transactionsList.isEmpty()) {
+            System.out.println("No transaction recorded.");
+            System.out.println("===================================");
+            return;
+        }
         for (Transaction transaction : transactionsList) {
             String price = String.format("$%,.2f", transaction.getProduct().getPrice());
             System.out.println(transaction.getBuyingDate() + " : " + price + " : " +
@@ -140,16 +161,31 @@ public class Menu {
 
     // EFFECT: Print out the total amount of spending
     private static void calculateTotal() {
-        double totalPrice = 0;
-        for (Transaction transaction: transactions) {
-            totalPrice += transaction.getProduct().getPrice();
-        }
+        double totalPrice = Database.getTotal();
         System.out.println("Total spending is $" + totalPrice);
         String averagePrice = String.format("$%,.2f", totalPrice / people.size());
         System.out.println(averagePrice + " per person");
     }
 
-    // MODIFIES: this
+
+    // EFFECT: Print out all transactions done by the indicated person
+    private static void displayIndividualHistory() {
+        scanner.nextLine();
+        System.out.println("Please enter member's name :");
+        String name = scanner.nextLine();
+        if (people.keySet().contains(name)) {
+            List<Transaction> transactions = Database.queryTransactionByBuyer(people.get(name));
+            for (Transaction transaction : transactions) {
+                String price = String.format("$%,.2f", transaction.getProduct().getPrice());
+                System.out.println(transaction.getBuyingDate() + " : " + price + " : " +
+                        transaction.getProduct().getName());
+            }
+            System.out.println("===================================");
+        } else {
+            System.out.println("Couldn't find the member.");
+        }
+    }
+
     // EFFECT: remove an existing transaction from the transaction list
     private static void removeTransaction() throws InvalidMonthException, InvalidDayException, InvalidYearException, InvalidBuyerException {
         scanner.nextLine();
@@ -159,16 +195,10 @@ public class Menu {
         double price = scanner.nextDouble();
         Product product = new Product(itemName,price);
         BuyingDate buyingDate = addDate();
-        Person buyer = createBuyer();
+        Person buyer = getBuyer();
         Transaction transaction = new Transaction(buyingDate,product,buyer);
-
-        if (transactions.contains(transaction)) {
-            transactions.remove(transaction);
-            buyer.minusTotalSpent(price);
-            System.out.println("Transaction removed!");
-        } else {
-            System.out.println("Transaction not found");
-        }
+        Database.deleteTransaction(transaction);
+        people.get(buyer.getName()).minusTotalSpent(price);
     }
 
     // MODIFIES: This
@@ -181,29 +211,34 @@ public class Menu {
         double price = scanner.nextDouble();
         BuyingDate date = addDate();
         scanner.nextLine();
-        Person buyer = createBuyer();
+        Person buyer = getBuyer();
         Product product = new Product(name,price);
         Transaction transaction = new Transaction(date,product,buyer);
-        transactions.add(transaction);
-        buyer.addTotalSpent(price);
-        System.out.println("Transaction added");
+        Database.addTransaction(transaction);
+        people.get(buyer.getName()).addTotalSpent(price);
+        System.out.println("===================================");
     }
 
 
     // EFFECT: Print out all members' name
     private static void printMemberList() {
         System.out.println("This group is consisted of " + people.size() + " members.");
-        for (Person person : people.values()) {
-            System.out.println(person);
+        List<String> names = new ArrayList<>(people.keySet());
+        Collections.sort(names);
+        for (String name : names) {
+            System.out.println(name);
         }
         System.out.println("===================================");
     }
 
     // EFFECT: Get the buyer from the member list
     // if the input member is not in the list, throw an InvalidBuyerException
-    private static Person createBuyer() throws InvalidBuyerException{
+    private static Person getBuyer() throws InvalidBuyerException{
         System.out.println("Enter buyer: ");
         String buyerName = scanner.nextLine().toLowerCase();
+        if (buyerName.equals("")) {
+            buyerName = scanner.nextLine().toLowerCase();
+        }
         if (people.containsKey(buyerName)) {
             return people.get(buyerName);
         } else {
@@ -277,6 +312,7 @@ public class Menu {
     }
 
 }
+
 
 
 

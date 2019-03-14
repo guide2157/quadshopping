@@ -6,9 +6,15 @@ import java.util.Objects;
 public class Person {
     private final String name;
     private double totalSpent =0;
+    private int id;
 
     public Person(String name) {
         this.name = name;
+    }
+
+    public Person(String name, int id) {
+        this.name = name;
+        this.id = id;
     }
 
     public double getTotalSpent() {
@@ -30,6 +36,14 @@ public class Person {
     // EFFECT: Deduct the total spending by the input
     public void minusTotalSpent(double totalSpent) {
         this.totalSpent -= totalSpent;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setTotalSpent(double totalSpent) {
+        this.totalSpent = totalSpent;
     }
 
     @Override
